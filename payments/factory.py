@@ -1,50 +1,45 @@
-from typing import Optional
+"""
+Фабрика для создания платежей
+"""
+
 import logging
-from config import STRIPE_ENABLED, CRYPTO_PAY_ENABLED, FAKE_PAYMENT, PaymentProvider
-from .stripe_pay import StripePaymentHandler
-from .crypto_pay import CryptoPayHandler
+from typing import Optional
+
+from config import TRIBUTE_API_KEY, TRIBUTE_ENABLED
 
 logger = logging.getLogger(__name__)
 
 
 class PaymentFactory:
+    """Фабрика для выбора платежного провайдера"""
+
     @staticmethod
-    def get_provider() -> PaymentProvider:
-        if FAKE_PAYMENT:
-            return PaymentProvider.FAKE
-        elif STRIPE_ENABLED:
-            return PaymentProvider.STRIPE
-        elif CRYPTO_PAY_ENABLED:
-            return PaymentProvider.CRYPTO_PAY
-        else:
-            logger.warning("⚠️ Нет активных провайдеров, используется FAKE")
-            return PaymentProvider.FAKE
-    
-    @staticmethod
-    async def create_payment(user_id: int, username: Optional[str] = None) -> Optional[str]:
-        provider = PaymentFactory.get_provider()
-        
-        if provider == PaymentProvider.STRIPE:
-            logger.info(f"💳 Создание Stripe подписки для user {user_id}")
-            handler = StripePaymentHandler()
-            result = await handler.create_subscription(user_id, username)
-            return result['session_url'] if result else None
-        
-        elif provider == PaymentProvider.CRYPTO_PAY:
-            logger.info(f"🪙 Создание CryptoPay платежа для user {user_id}")
-            handler = CryptoPayHandler()
-            return await handler.create_invoice(user_id)
-        
-        else:
-            logger.info(f"🧪 Фейковый платеж для user {user_id}")
-            return f"https://fake-payment.com/pay?user_id={user_id}"
-    
+    async def create_payment(
+        user_id: int, username: Optional[str] = None
+    ) -> Optional[str]:
+        """
+        Создает платеж и возвращает URL для оплаты
+
+        Args:
+            user_id: ID пользователя Telegram
+            username: Username пользователя (опционально)
+
+        Returns:
+            URL для оплаты или None в случае ошибки
+        """
+
+        if TRIBUTE_ENABLED:
+            logger.info(f"💳 Using TRIBUTE payment for user {user_id}")
+            from .tribute_pay import TributePaymentHandler
+
+            return await TributePaymentHandler.create_payment(user_id, username)
+
+        logger.error("❌ No payment provider enabled!")
+        return None
+
     @staticmethod
     def get_provider_name() -> str:
-        provider = PaymentFactory.get_provider()
-        names = {
-            PaymentProvider.STRIPE: "Stripe (рекуррентная подписка)",
-            PaymentProvider.CRYPTO_PAY: "CryptoPay (криптовалюта)",
-            PaymentProvider.FAKE: "Тестовый режим"
-        }
-        return names.get(provider, "Неизвестно")
+        """Возвращает название активного провайдера"""
+        if TRIBUTE_ENABLED:
+            return "Tribute"
+        return "None"
