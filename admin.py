@@ -311,7 +311,9 @@ async def cmd_admin(message: Message):
         return
 
     await message.answer(
-        "🔧 **АДМИН-ПАНЕЛЬ**\n\nВыберите действие:", reply_markup=admin_main_keyboard()
+        "🔧 <b>АДМИН-ПАНЕЛЬ</b>\n\nВыберите действие:",
+        reply_markup=admin_main_keyboard(),
+        parse_mode="HTML",
     )
     logger.info(f"👤 Admin {message.from_user.id} opened panel")
 
@@ -325,7 +327,9 @@ async def show_admin_panel(callback: CallbackQuery, state: FSMContext):
 
     await state.clear()
     await callback.message.edit_text(
-        "🔧 **АДМИН-ПАНЕЛЬ**\n\nВыберите действие:", reply_markup=admin_main_keyboard()
+        "🔧 <b>АДМИН-ПАНЕЛЬ</b>\n\nВыберите действие:",
+        reply_markup=admin_main_keyboard(),
+        parse_mode="HTML",
     )
     await callback.answer()
 
@@ -396,13 +400,15 @@ async def show_users_page(callback: CallbackQuery, page: int):
 
         # Формируем текст с информацией
         text = (
-            f"👥 **СПИСОК ПОЛЬЗОВАТЕЛЕЙ**\n\n"
+            f"👥 <b>СПИСОК ПОЛЬЗОВАТЕЛЕЙ</b>\n\n"
             f"📊 Всего: {len(users)}\n"
             f"📄 Страница {page + 1} из {paginator.total_pages}\n\n"
             f"Выберите пользователя:"
         )
 
-        await callback.message.edit_text(text, reply_markup=paginator.get_keyboard())
+        await callback.message.edit_text(
+            text, reply_markup=paginator.get_keyboard(), parse_mode="HTML"
+        )
         await callback.answer()
 
     except Exception as e:
@@ -486,18 +492,18 @@ async def show_subscription_details(callback: CallbackQuery):
             return
 
         details = (
-            f"💎 **ДЕТАЛИ ПОДПИСКИ**\n\n"
-            f"👤 User ID: `{user_id}`\n\n"
-            f"📊 **Статус:** {sub['status']}\n"
-            f"💳 **Провайдер:** {sub['payment_provider']}\n"
-            f"🔗 **Invite Link:** {sub.get('invite_link', 'Нет')}\n"
-            f"📅 **Истекает:** {sub['expires_at'].strftime('%d.%m.%Y %H:%M')}\n"
-            f"🆔 **Payment Sub ID:** {sub.get('stripe_subscription_id', 'N/A')}\n"
-            f"👤 **Customer ID:** {sub.get('stripe_customer_id', 'N/A')}"
+            f"💎 <b>ДЕТАЛИ ПОДПИСКИ</b>\n\n"
+            f"👤 User ID: <code>{user_id}</code>\n\n"
+            f"📊 <b>Статус:</b> {escape(str(sub['status']))}\n"
+            f"💳 <b>Провайдер:</b> {escape(str(sub['payment_provider']))}\n"
+            f"🔗 <b>Invite Link:</b> {escape(str(sub.get('invite_link', 'Нет')))}\n"
+            f"📅 <b>Истекает:</b> {sub['expires_at'].strftime('%d.%m.%Y %H:%M')}\n"
+            f"🆔 <b>Payment Sub ID:</b> {escape(str(sub.get('stripe_subscription_id', 'N/A')))}\n"
+            f"👤 <b>Customer ID:</b> {escape(str(sub.get('stripe_customer_id', 'N/A')))}"
         )
 
         await callback.message.edit_text(
-            details, reply_markup=user_profile_keyboard(user_id)
+            details, reply_markup=user_profile_keyboard(user_id), parse_mode="HTML"
         )
         await callback.answer()
 
@@ -515,10 +521,11 @@ async def message_user_prompt(callback: CallbackQuery, state: FSMContext):
     user_id = int(callback.data.split("_")[-1])
 
     await callback.message.edit_text(
-        f"💬 **ОТПРАВКА СООБЩЕНИЯ**\n\n"
-        f"Получатель: User ID `{user_id}`\n\n"
+        f"💬 <b>ОТПРАВКА СООБЩЕНИЯ</b>\n\n"
+        f"Получатель: User ID <code>{user_id}</code>\n\n"
         f"Отправьте текст сообщения:",
         reply_markup=user_profile_keyboard(user_id),
+        parse_mode="HTML",
     )
     await state.update_data(message_target_user=user_id)
     await state.set_state(AdminStates.waiting_for_broadcast)
@@ -568,21 +575,21 @@ async def show_detailed_stats(callback: CallbackQuery):
             revenue = active_subs * SUBSCRIPTION_PRICE
 
             stats_text = (
-                f"📊 **ДЕТАЛЬНАЯ СТАТИСТИКА**\n\n"
-                f"👥 **Пользователи:**\n"
+                f"📊 <b>ДЕТАЛЬНАЯ СТАТИСТИКА</b>\n\n"
+                f"👥 <b>Пользователи:</b>\n"
                 f"├ Всего: {total_users}\n"
                 f"└ Новых сегодня: {today_users}\n\n"
-                f"💎 **Подписки:**\n"
+                f"💎 <b>Подписки:</b>\n"
                 f"├ Активных: {active_subs}\n"
                 f"├ Отмененных: {cancelled_subs}\n"
                 f"└ Оформлено сегодня: {today_subs}\n\n"
-                f"💰 **Приблизительный доход:**\n"
+                f"💰 <b>Приблизительный доход:</b>\n"
                 f"└ ${revenue:.2f} (активные подписки)\n\n"
                 f"📅 Обновлено: {datetime.now().strftime('%d.%m.%Y %H:%M')}"
             )
 
             await callback.message.edit_text(
-                stats_text, reply_markup=back_to_admin_keyboard()
+                stats_text, reply_markup=back_to_admin_keyboard(), parse_mode="HTML"
             )
             await callback.answer()
 
@@ -601,10 +608,11 @@ async def start_broadcast(callback: CallbackQuery, state: FSMContext):
         return
 
     await callback.message.edit_text(
-        "📢 **МАССОВАЯ РАССЫЛКА**\n\n"
+        "📢 <b>МАССОВАЯ РАССЫЛКА</b>\n\n"
         "Отправьте текст сообщения для рассылки всем пользователям.\n\n"
-        "⚠️ Поддерживается форматирование Markdown.",
+        "⚠️ Поддерживается HTML-форматирование.",
         reply_markup=back_to_admin_keyboard(),
+        parse_mode="HTML",
     )
     await state.set_state(AdminStates.waiting_for_broadcast)
     await callback.answer()
@@ -641,11 +649,12 @@ async def confirm_broadcast(message: Message, state: FSMContext):
 
     users = await get_all_users()
     await message.answer(
-        f"📢 **ПОДТВЕРЖДЕНИЕ РАССЫЛКИ**\n\n"
+        f"📢 <b>ПОДТВЕРЖДЕНИЕ РАССЫЛКИ</b>\n\n"
         f"Получателей: {len(users)}\n\n"
-        f"**Текст сообщения:**\n{message.text}\n\n"
+        f"<b>Текст сообщения:</b>\n{escape(message.text)}\n\n"
         f"Отправить?",
         reply_markup=confirm_broadcast_keyboard(),
+        parse_mode="HTML",
     )
 
 
@@ -684,11 +693,12 @@ async def execute_broadcast(callback: CallbackQuery, state: FSMContext):
             logger.warning(f"Failed to send to {user['user_id']}: {e}")
 
     await callback.message.edit_text(
-        f"✅ **РАССЫЛКА ЗАВЕРШЕНА**\n\n"
+        f"✅ <b>РАССЫЛКА ЗАВЕРШЕНА</b>\n\n"
         f"✅ Отправлено: {success}\n"
         f"❌ Ошибок: {failed}\n"
         f"📊 Всего: {len(users)}",
         reply_markup=back_to_admin_keyboard(),
+        parse_mode="HTML",
     )
 
     await state.clear()
@@ -706,11 +716,12 @@ async def start_user_search(callback: CallbackQuery, state: FSMContext):
         return
 
     await callback.message.edit_text(
-        "🔍 **ПОИСК ПОЛЬЗОВАТЕЛЯ**\n\n"
+        "🔍 <b>ПОИСК ПОЛЬЗОВАТЕЛЯ</b>\n\n"
         "Отправьте:\n"
         "• User ID (например: 123456789)\n"
         "• Username (например: @username)",
         reply_markup=back_to_admin_keyboard(),
+        parse_mode="HTML",
     )
     await state.set_state(AdminStates.waiting_for_user_search)
     await callback.answer()
@@ -826,8 +837,9 @@ async def start_manual_subscription(callback: CallbackQuery, state: FSMContext):
         return
 
     await callback.message.edit_text(
-        "💎 **ВЫДАЧА ПОДПИСКИ**\n\nОтправьте User ID пользователя:",
+        "💎 <b>ВЫДАЧА ПОДПИСКИ</b>\n\nОтправьте User ID пользователя:",
         reply_markup=back_to_admin_keyboard(),
+        parse_mode="HTML",
     )
     await state.set_state(AdminStates.waiting_for_manual_sub_user)
     await callback.answer()
@@ -844,9 +856,10 @@ async def ask_subscription_days(message: Message, state: FSMContext):
     await state.update_data(target_user_id=user_id)
 
     await message.answer(
-        f"💎 Выдача подписки для User ID: `{user_id}`\n\n"
+        f"💎 Выдача подписки для User ID: <code>{user_id}</code>\n\n"
         f"Отправьте количество дней (по умолчанию: {SUBSCRIPTION_DAYS}):",
         reply_markup=back_to_admin_keyboard(),
+        parse_mode="HTML",
     )
     await state.set_state(AdminStates.waiting_for_manual_sub_days)
 
@@ -883,10 +896,11 @@ async def give_manual_subscription(message: Message, state: FSMContext):
         try:
             await bot.send_message(
                 target_user_id,
-                f"🎁 **Вам выдана подписка!**\n\n"
+                f"🎁 <b>Вам выдана подписка!</b>\n\n"
                 f"⏰ Срок: {days} дней\n"
                 f"🔗 Ссылка на канал:\n{invite.invite_link}\n\n"
                 f"⚠️ Ссылка действительна 24 часа",
+                parse_mode="HTML",
             )
         except:
             pass
@@ -942,10 +956,11 @@ async def give_subscription_from_profile(callback: CallbackQuery):
         try:
             await bot.send_message(
                 user_id,
-                f"🎁 **Вам выдана подписка!**\n\n"
+                f"🎁 <b>Вам выдана подписка!</b>\n\n"
                 f"⏰ Срок: {SUBSCRIPTION_DAYS} дней\n"
                 f"🔗 Ссылка на канал:\n{invite.invite_link}\n\n"
                 f"⚠️ Ссылка действительна 24 часа",
+                parse_mode="HTML",
             )
         except:
             pass
@@ -1009,14 +1024,17 @@ async def show_cancellations(callback: CallbackQuery):
             await callback.answer()
             return
 
-        text = "📋 **ПОСЛЕДНИЕ ОТМЕНЫ ПОДПИСОК**\n\n"
+        text = "📋 <b>ПОСЛЕДНИЕ ОТМЕНЫ ПОДПИСОК</b>\n\n"
         for i, row in enumerate(cancellations, 1):
-            username = row[0] or "Неизвестно"
+            username = escape(row[0] or "Неизвестно")
             reason = row[1][:50] + "..." if len(row[1]) > 50 else row[1]
+            reason = escape(reason)
             date = row[2]
             text += f"{i}. @{username}\n💬 {reason}\n📅 {date}\n\n"
 
-        await callback.message.edit_text(text, reply_markup=back_to_admin_keyboard())
+        await callback.message.edit_text(
+            text, reply_markup=back_to_admin_keyboard(), parse_mode="HTML"
+        )
         await callback.answer()
 
     except Exception as e:

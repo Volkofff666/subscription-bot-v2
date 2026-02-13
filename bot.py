@@ -115,10 +115,11 @@ async def process_successful_payment(
         # Отправляем пользователю
         await bot.send_message(
             user_id,
-            f"✅ **Оплата прошла успешно!**\n\n"
-            f"Доступ открыт на {SUBSCRIPTION_DAYS} дней.\n"
+            f"✅ <b>Оплата прошла успешно!</b>\n\n"
+            f"Доступ открыт на <b>{SUBSCRIPTION_DAYS} дней</b>.\n"
             f"Вот ваша ссылка:\n{invite_link}\n\n"
-            f"⚠️ *Ссылка одноразовая и действует 24 часа.*",
+            f"⚠️ <i>Ссылка одноразовая и действует 24 часа.</i>",
+            parse_mode="HTML",
         )
         logger.info(f"✅ Подписка выдана user {user_id}")
 
@@ -178,14 +179,18 @@ async def cmd_start(message: Message):
     else:
         keyboard = main_keyboard_new_user()
 
-    await message.answer(format_message("welcome"), reply_markup=keyboard)
+    await message.answer(
+        format_message("welcome"), reply_markup=keyboard, parse_mode="HTML"
+    )
     logger.info(f"👤 User {user.id} (@{user.username}) started bot")
 
 
 @dp.callback_query(F.data == "subscribe")
 async def show_subscription_offer(callback: CallbackQuery):
     await callback.message.edit_text(
-        format_message("subscription_offer"), reply_markup=subscription_offer_keyboard()
+        format_message("subscription_offer"),
+        reply_markup=subscription_offer_keyboard(),
+        parse_mode="HTML",
     )
     await callback.answer()
 
@@ -204,13 +209,17 @@ async def process_payment(callback: CallbackQuery):
 
     if not payment_url:
         await callback.message.edit_text(
-            format_message("payment_error"), reply_markup=subscription_offer_keyboard()
+            format_message("payment_error"),
+            reply_markup=subscription_offer_keyboard(),
+            parse_mode="HTML",
         )
         await callback.answer("❌ Ошибка создания платежа", show_alert=True)
         return
 
     await callback.message.edit_text(
-        format_message("payment_invoice"), reply_markup=payment_keyboard(payment_url)
+        format_message("payment_invoice"),
+        reply_markup=payment_keyboard(payment_url),
+        parse_mode="HTML",
     )
     await callback.answer("💳 Переходите к оплате!")
     logger.info(f"💳 Payment link for user {user_id}: {payment_url}")
@@ -225,6 +234,7 @@ async def show_status(callback: CallbackQuery):
         await callback.message.edit_text(
             format_message("no_subscription"),
             reply_markup=subscription_offer_keyboard(),
+            parse_mode="HTML",
         )
         await callback.answer()
         return
@@ -234,6 +244,7 @@ async def show_status(callback: CallbackQuery):
         await callback.message.edit_text(
             format_message("no_subscription"),
             reply_markup=subscription_offer_keyboard(),
+            parse_mode="HTML",
         )
         await callback.answer()
         return
@@ -241,6 +252,7 @@ async def show_status(callback: CallbackQuery):
     await callback.message.edit_text(
         format_message("status_active", days_left=days_left),
         reply_markup=status_keyboard_active(),
+        parse_mode="HTML",
     )
     await callback.answer()
 
@@ -248,7 +260,9 @@ async def show_status(callback: CallbackQuery):
 @dp.callback_query(F.data == "cancel_subscription")
 async def ask_cancel_confirm(callback: CallbackQuery):
     await callback.message.edit_text(
-        format_message("cancel_confirm"), reply_markup=cancel_confirm_keyboard()
+        format_message("cancel_confirm"),
+        reply_markup=cancel_confirm_keyboard(),
+        parse_mode="HTML",
     )
     await callback.answer()
 
@@ -256,7 +270,7 @@ async def ask_cancel_confirm(callback: CallbackQuery):
 @dp.callback_query(F.data == "cancel_confirm_yes")
 async def ask_cancel_reason(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
-        format_message("cancel_reason_prompt"), reply_markup=None
+        format_message("cancel_reason_prompt"), reply_markup=None, parse_mode="HTML"
     )
     await state.set_state(CancelSubscriptionForm.waiting_for_reason)
     await callback.answer()
@@ -267,6 +281,7 @@ async def cancel_no(callback: CallbackQuery):
     await callback.message.edit_text(
         format_message("cancel_thanks_for_staying"),
         reply_markup=main_keyboard_subscribed(),
+        parse_mode="HTML",
     )
     await callback.answer("💙 Спасибо!")
 
@@ -297,6 +312,7 @@ async def process_cancel_reason(message: Message, state: FSMContext):
     await message.answer(
         format_message("cancel_success_detailed"),
         reply_markup=main_keyboard_after_payment_attempt(),
+        parse_mode="HTML",
     )
     await state.clear()
     logger.info(f"❌ User {user_id} cancelled subscription")
@@ -305,7 +321,9 @@ async def process_cancel_reason(message: Message, state: FSMContext):
 @dp.callback_query(F.data == "support")
 async def show_support(callback: CallbackQuery):
     await callback.message.edit_text(
-        format_message("support_menu"), reply_markup=support_keyboard(SUPPORT_USERNAME)
+        format_message("support_menu"),
+        reply_markup=support_keyboard(SUPPORT_USERNAME),
+        parse_mode="HTML",
     )
     await callback.answer()
 
@@ -323,7 +341,9 @@ async def back_to_main(callback: CallbackQuery):
     else:
         keyboard = main_keyboard_new_user()
 
-    await callback.message.edit_text(format_message("welcome"), reply_markup=keyboard)
+    await callback.message.edit_text(
+        format_message("welcome"), reply_markup=keyboard, parse_mode="HTML"
+    )
     await callback.answer()
 
 
