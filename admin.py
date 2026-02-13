@@ -3,6 +3,7 @@
 """
 
 import logging
+from html import escape
 from datetime import datetime
 from typing import Dict, List
 
@@ -282,19 +283,20 @@ def _build_profile_text(
     sub: Dict,
 ) -> str:
     """Единый рендер профиля пользователя для админки."""
-    username_text = f"@{username}" if username else "не указан"
+    first_name_text = escape(first_name or "не указано")
+    username_text = f"@{escape(username)}" if username else "не указан"
     payment_attempts = "Да" if has_payment else "Нет"
-    subscription_info = _format_subscription_info(sub)
+    subscription_info = escape(_format_subscription_info(sub))
 
     return (
-        "ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ\n\n"
-        f"ID: {user_id}\n"
-        f"Имя: {first_name or 'не указано'}\n"
-        f"Username: {username_text}\n"
-        f"Регистрация: {_format_join_date(join_date)}\n"
-        f"Попытки оплаты: {payment_attempts}\n"
-        f"Отмен подписок: {cancellations_count}\n\n"
-        f"Подписка:\n{subscription_info}"
+        "<b>ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ</b>\n\n"
+        f"<b>ID:</b> <code>{user_id}</code>\n"
+        f"<b>Имя:</b> {first_name_text}\n"
+        f"<b>Username:</b> {username_text}\n"
+        f"<b>Регистрация:</b> {_format_join_date(join_date)}\n"
+        f"<b>Попытки оплаты:</b> {payment_attempts}\n"
+        f"<b>Отмен подписок:</b> {cancellations_count}\n\n"
+        f"<b>Подписка:</b>\n{subscription_info}"
     )
 
 
@@ -457,7 +459,9 @@ async def show_user_profile(callback: CallbackQuery):
             )
 
             await callback.message.edit_text(
-                profile_text, reply_markup=user_profile_keyboard(user_id)
+                profile_text,
+                reply_markup=user_profile_keyboard(user_id),
+                parse_mode="HTML",
             )
             await callback.answer()
 
@@ -802,7 +806,9 @@ async def show_user_profile_from_search(message: Message, user_id: int):
             )
 
             await message.answer(
-                profile_text, reply_markup=user_profile_keyboard(user_id)
+                profile_text,
+                reply_markup=user_profile_keyboard(user_id),
+                parse_mode="HTML",
             )
 
     except Exception as e:
