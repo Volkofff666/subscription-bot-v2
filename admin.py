@@ -237,7 +237,7 @@ def _format_join_date(value) -> str:
 def _format_subscription_info(sub: Dict) -> str:
     """Единый формат блока подписки."""
     if not sub:
-        return "Нет активной или архивной подписки"
+        return "Статус: нет подписки"
 
     status = sub.get("status")
     expires_at = sub.get("expires_at")
@@ -245,26 +245,29 @@ def _format_subscription_info(sub: Dict) -> str:
 
     if status == "active":
         if not expires_at:
-            return "Активна (дата окончания не указана)"
+            return "Статус: активна\nДата окончания: не указана"
         days_left = (expires_at - datetime.now()).days
         if days_left >= 0:
             return (
-                "Активна\n"
+                "Статус: активна\n"
                 f"Осталось дней: {days_left}\n"
                 f"Провайдер: {provider}\n"
                 f"Действует до: {expires_at.strftime('%d.%m.%Y %H:%M')}"
             )
-        return f"Истекла {expires_at.strftime('%d.%m.%Y %H:%M')}"
+        return f"Статус: истекла\nДата окончания: {expires_at.strftime('%d.%m.%Y %H:%M')}"
 
     if status == "cancelled":
         if expires_at:
-            return f"Отменена (доступ до {expires_at.strftime('%d.%m.%Y %H:%M')})"
-        return "Отменена"
+            return (
+                "Статус: отменена\n"
+                f"Доступ до: {expires_at.strftime('%d.%m.%Y %H:%M')}"
+            )
+        return "Статус: отменена"
 
     if status == "expired":
         if expires_at:
-            return f"Истекла {expires_at.strftime('%d.%m.%Y %H:%M')}"
-        return "Истекла"
+            return f"Статус: истекла\nДата окончания: {expires_at.strftime('%d.%m.%Y %H:%M')}"
+        return "Статус: истекла"
 
     return f"Статус: {status or 'неизвестен'}"
 
@@ -284,14 +287,14 @@ def _build_profile_text(
     subscription_info = _format_subscription_info(sub)
 
     return (
-        "👤 **ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ**\n\n"
-        f"🆔 **ID:** `{user_id}`\n"
-        f"👤 **Имя:** {first_name or 'не указано'}\n"
-        f"📱 **Username:** {username_text}\n"
-        f"📅 **Регистрация:** {_format_join_date(join_date)}\n"
-        f"💳 **Попытки оплаты:** {payment_attempts}\n"
-        f"❌ **Отмен подписок:** {cancellations_count}\n\n"
-        f"💎 **Подписка:**\n{subscription_info}"
+        "ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ\n\n"
+        f"ID: {user_id}\n"
+        f"Имя: {first_name or 'не указано'}\n"
+        f"Username: {username_text}\n"
+        f"Регистрация: {_format_join_date(join_date)}\n"
+        f"Попытки оплаты: {payment_attempts}\n"
+        f"Отмен подписок: {cancellations_count}\n\n"
+        f"Подписка:\n{subscription_info}"
     )
 
 
