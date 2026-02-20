@@ -20,28 +20,31 @@ from messages import format_message
 logger = logging.getLogger(__name__)
 
 
-WARNING_DAYS = 3
+WARNING_DAYS = (3, 1)
 
 
 async def _send_expiry_warnings(bot: Bot) -> None:
-    expiring = await get_expiring_subscriptions(days=WARNING_DAYS)
-    if not expiring:
-        return
+    for warning_days in WARNING_DAYS:
+        expiring = await get_expiring_subscriptions(days=warning_days)
+        if not expiring:
+            continue
 
-    for item in expiring:
-        user_id = item["user_id"]
-        expires_at = item["expires_at"]
-        days_left = max((expires_at - datetime.now()).days, 0)
+        for item in expiring:
+            user_id = item["user_id"]
+            expires_at = item["expires_at"]
+            days_left = max((expires_at - datetime.now()).days, 0)
 
-        try:
-            await bot.send_message(
-                user_id,
-                format_message("subscription_expiring_soon", days_left=days_left),
-            )
-            await mark_notification(user_id, f"expiry_{WARNING_DAYS}d")
-            logger.info(f"Sent expiry warning to {user_id}")
-        except Exception as e:
-            logger.warning(f"Failed to send expiry warning to {user_id}: {e}")
+            try:
+                await bot.send_message(
+                    user_id,
+                    format_message("subscription_expiring_soon", days_left=days_left),
+                )
+                await mark_notification(user_id, f"expiry_{warning_days}d")
+                logger.info(
+                    "Sent expiry warning (%sd) to %s", warning_days, user_id
+                )
+            except Exception as e:
+                logger.warning(f"Failed to send expiry warning to {user_id}: {e}")
 
 
 async def _revoke_expired(bot: Bot) -> None:

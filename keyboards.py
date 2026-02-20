@@ -61,3 +61,10 @@ def back_to_status_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔙 Назад к статусу", callback_data="status")]
     ])
+
+
+def renewal_offer_keyboard(payment_url: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💳 Продлить подписку", url=payment_url)],
+        [InlineKeyboardButton(text="❌ Отказаться", callback_data="renewal_decline")]
+    ])

@@ -1,4 +1,4 @@
-from admin import UsersPaginator
+from admin import UsersPaginator, _parse_usernames
 from messages import format_message
 
 
@@ -21,3 +21,8 @@ def test_format_message_with_known_and_unknown_key():
     rendered = format_message("status_active", days_left=7)
     assert "Дней осталось: 7" in rendered
     assert format_message("missing_key") == ""
+
+
+def test_parse_usernames_normalizes_and_deduplicates():
+    raw = "@Alice, bob\nCHARLIE ; @alice"
+    assert _parse_usernames(raw) == ["alice", "bob", "charlie"]

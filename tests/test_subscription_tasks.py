@@ -26,10 +26,15 @@ async def test_send_expiry_warnings_marks_notification(monkeypatch):
     bot = FakeBot()
     now = datetime.now()
     marked = []
+    calls = []
 
     async def fake_get_expiring_subscriptions(days):
-        assert days == subscription_tasks.WARNING_DAYS
-        return [{"user_id": 10, "expires_at": now + timedelta(days=2)}]
+        calls.append(days)
+        if days == 3:
+            return [{"user_id": 10, "expires_at": now + timedelta(days=2)}]
+        if days == 1:
+            return [{"user_id": 11, "expires_at": now + timedelta(days=1)}]
+        return []
 
     async def fake_mark_notification(user_id, notification_type):
         marked.append((user_id, notification_type))
@@ -41,10 +46,13 @@ async def test_send_expiry_warnings_marks_notification(monkeypatch):
 
     await subscription_tasks._send_expiry_warnings(bot)
 
-    assert len(bot.messages) == 1
+    assert calls == [3, 1]
+    assert len(bot.messages) == 2
     assert bot.messages[0][0] == 10
     assert "Подписка скоро истекает" in bot.messages[0][1]
-    assert marked == [(10, "expiry_3d")]
+    assert bot.messages[1][0] == 11
+    assert "Подписка скоро истекает" in bot.messages[1][1]
+    assert marked == [(10, "expiry_3d"), (11, "expiry_1d")]
 
 
 @pytest.mark.asyncio

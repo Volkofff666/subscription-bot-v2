@@ -28,6 +28,9 @@ from database import (
     get_user_stats,
     is_subscription_active,
 )
+from keyboards import renewal_offer_keyboard
+from messages import format_message
+from payments import PaymentFactory
 
 logger = logging.getLogger(__name__)
 admin_router = Router()
@@ -40,6 +43,7 @@ class AdminStates(StatesGroup):
     waiting_for_user_search = State()
     waiting_for_manual_sub_user = State()
     waiting_for_manual_sub_days = State()
+    waiting_for_legacy_usernames = State()
 
 
 # ==================== PAGINATION ====================
@@ -156,6 +160,11 @@ def admin_main_keyboard() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(
                     text="📥 Экспорт данных", callback_data="admin_export"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔔 Уведомить старую базу", callback_data="admin_legacy_notify"
                 )
             ],
         ]
@@ -298,6 +307,19 @@ def _build_profile_text(
         f"<b>Отмен подписок:</b> {cancellations_count}\n\n"
         f"<b>Подписка:</b>\n{subscription_info}"
     )
+
+
+def _parse_usernames(raw: str) -> List[str]:
+    tokens = raw.replace(",", " ").replace(";", " ").split()
+    usernames = []
+    seen = set()
+    for token in tokens:
+        username = token.strip().lstrip("@").lower()
+        if not username or username in seen:
+            continue
+        seen.add(username)
+        usernames.append(username)
+    return usernames
 
 
 # ==================== HANDLERS ====================
@@ -704,6 +726,96 @@ async def execute_broadcast(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer("✅ Готово!")
     logger.info(f"Broadcast completed: {success} sent, {failed} failed")
+
+
+# ==================== LEGACY-УВЕДОМЛЕНИЯ ====================
+
+
+@admin_router.callback_query(F.data == "admin_legacy_notify")
+async def start_legacy_notify(callback: CallbackQuery, state: FSMContext):
+    """Запуск уведомления клиентов из старой базы по username."""
+    if callback.from_user.id not in ADMIN_IDS:
+        return
+
+    await callback.message.edit_text(
+        "🔔 <b>УВЕДОМЛЕНИЕ СТАРОЙ БАЗЫ</b>\n\n"
+        "Отправьте список username (через пробел, запятую или с новой строки).\n"
+        "Пример: <code>@alice @bob charlie</code>",
+        reply_markup=back_to_admin_keyboard(),
+        parse_mode="HTML",
+    )
+    await state.set_state(AdminStates.waiting_for_legacy_usernames)
+    await callback.answer()
+
+
+@admin_router.message(AdminStates.waiting_for_legacy_usernames)
+async def process_legacy_notify(message: Message, state: FSMContext):
+    """Отправка уведомлений о продлении подписки пользователям по username."""
+    if message.from_user.id not in ADMIN_IDS:
+        return
+
+    usernames = _parse_usernames(message.text or "")
+    if not usernames:
+        await message.answer(
+            "❌ Не нашел ни одного валидного username. Попробуйте снова."
+        )
+        return
+
+    placeholders = ",".join(["?"] * len(usernames))
+
+    async with get_db() as db:
+        async with db.execute(
+            f"SELECT user_id, username FROM users WHERE lower(username) IN ({placeholders})",
+            usernames,
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+    found = {str(row[1]).lower(): row[0] for row in rows if row[1]}
+    missed = [u for u in usernames if u not in found]
+
+    payment_url = await PaymentFactory.create_payment(message.from_user.id)
+    if not payment_url:
+        await message.answer(
+            "❌ Не удалось получить ссылку оплаты. Проверьте платежный провайдер.",
+            reply_markup=back_to_admin_keyboard(),
+        )
+        await state.clear()
+        return
+
+    from bot import bot
+
+    sent = 0
+    failed = 0
+
+    for username in usernames:
+        user_id = found.get(username)
+        if not user_id:
+            continue
+        try:
+            await bot.send_message(
+                user_id,
+                format_message("renewal_offer_expired"),
+                reply_markup=renewal_offer_keyboard(payment_url),
+                parse_mode="HTML",
+            )
+            sent += 1
+        except Exception as e:
+            failed += 1
+            logger.warning("Failed to notify user %s (@%s): %s", user_id, username, e)
+
+    missed_text = ", ".join(f"@{u}" for u in missed[:30]) if missed else "нет"
+    await message.answer(
+        "✅ <b>Рассылка старой базе завершена</b>\n\n"
+        f"Введено username: {len(usernames)}\n"
+        f"Найдено в БД: {len(found)}\n"
+        f"Отправлено: {sent}\n"
+        f"Ошибок отправки: {failed}\n"
+        f"Не найдены: {len(missed)}\n"
+        f"Список (первые 30): {missed_text}",
+        reply_markup=back_to_admin_keyboard(),
+        parse_mode="HTML",
+    )
+    await state.clear()
 
 
 # ==================== ПОИСК ПОЛЬЗОВАТЕЛЯ ====================

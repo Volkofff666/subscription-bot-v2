@@ -328,6 +328,16 @@ async def show_support(callback: CallbackQuery):
     await callback.answer()
 
 
+@dp.callback_query(F.data == "renewal_decline")
+async def renewal_decline(callback: CallbackQuery):
+    await callback.message.edit_text(
+        format_message("renewal_declined"),
+        reply_markup=main_keyboard_after_payment_attempt(),
+        parse_mode="HTML",
+    )
+    await callback.answer("Принято")
+
+
 @dp.callback_query(F.data == "back_to_main")
 async def back_to_main(callback: CallbackQuery):
     user_id = callback.from_user.id
