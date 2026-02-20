@@ -7,7 +7,7 @@ from html import escape
 from datetime import datetime
 from typing import Dict, List
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -641,15 +641,13 @@ async def start_broadcast(callback: CallbackQuery, state: FSMContext):
 
 
 @admin_router.message(AdminStates.waiting_for_broadcast)
-async def confirm_broadcast(message: Message, state: FSMContext):
+async def confirm_broadcast(message: Message, state: FSMContext, bot: Bot):
     """Подтверждение рассылки"""
     data = await state.get_data()
     target_user = data.get("message_target_user")
 
     # Если это отправка конкретному пользователю
     if target_user:
-        from bot import bot
-
         try:
             await bot.send_message(target_user, message.text)
             await message.answer(
@@ -681,7 +679,7 @@ async def confirm_broadcast(message: Message, state: FSMContext):
 
 
 @admin_router.callback_query(F.data == "broadcast_confirm")
-async def execute_broadcast(callback: CallbackQuery, state: FSMContext):
+async def execute_broadcast(callback: CallbackQuery, state: FSMContext, bot: Bot):
     """Выполнить рассылку"""
     if callback.from_user.id not in ADMIN_IDS:
         return
@@ -700,8 +698,6 @@ async def execute_broadcast(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         f"📤 Отправка сообщения {len(users)} пользователям...\n\nПожалуйста, подождите."
     )
-
-    from bot import bot
 
     for user in users:
         try:
@@ -749,7 +745,7 @@ async def start_legacy_notify(callback: CallbackQuery, state: FSMContext):
 
 
 @admin_router.message(AdminStates.waiting_for_legacy_usernames)
-async def process_legacy_notify(message: Message, state: FSMContext):
+async def process_legacy_notify(message: Message, state: FSMContext, bot: Bot):
     """Отправка уведомлений о продлении подписки пользователям по username."""
     if message.from_user.id not in ADMIN_IDS:
         return
@@ -781,8 +777,6 @@ async def process_legacy_notify(message: Message, state: FSMContext):
         )
         await state.clear()
         return
-
-    from bot import bot
 
     sent = 0
     failed = 0
@@ -977,11 +971,9 @@ async def ask_subscription_days(message: Message, state: FSMContext):
 
 
 @admin_router.message(AdminStates.waiting_for_manual_sub_days)
-async def give_manual_subscription(message: Message, state: FSMContext):
+async def give_manual_subscription(message: Message, state: FSMContext, bot: Bot):
     """Выдать подписку"""
     from datetime import timedelta
-
-    from bot import bot
 
     data = await state.get_data()
     target_user_id = data.get("target_user_id")
@@ -1039,14 +1031,12 @@ async def give_manual_subscription(message: Message, state: FSMContext):
 
 
 @admin_router.callback_query(F.data.startswith("give_sub_"))
-async def give_subscription_from_profile(callback: CallbackQuery):
+async def give_subscription_from_profile(callback: CallbackQuery, bot: Bot):
     """Выдать подписку из профиля"""
     if callback.from_user.id not in ADMIN_IDS:
         return
 
     from datetime import timedelta
-
-    from bot import bot
 
     user_id = int(callback.data.split("_")[-1])
 
