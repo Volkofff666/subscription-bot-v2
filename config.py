@@ -29,7 +29,7 @@ TRIBUTE_API_KEY: str = os.getenv("TRIBUTE_API_KEY", "")
 TRIBUTE_WEBHOOK_SECRET: str = os.getenv("TRIBUTE_WEBHOOK_SECRET", "")
 TRIBUTE_PRODUCT_ID: str = os.getenv("TRIBUTE_PRODUCT_ID", "")
 TRIBUTE_SUBSCRIPTION_URL: str = os.getenv(
-    "TRIBUTE_SUBSCRIPTION_URL", "https://t.me/tribute/app?startapp=sOCo"
+    "TRIBUTE_SUBSCRIPTION_URL", "https://t.me/tribute/app?startapp=sOFz"
 )
 
 # ==================== SUBSCRIPTION ====================
