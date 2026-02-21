@@ -10,7 +10,7 @@ from config import (
     SUBSCRIPTION_PRICE,
     TRIBUTE_API_KEY,
     TRIBUTE_ENABLED,
-    TRIBUTE_PRODUCT_ID,
+    TRIBUTE_SUBSCRIPTION_URL,
     TRIBUTE_WEBHOOK_SECRET,
 )
 
@@ -20,24 +20,26 @@ logger = logging.getLogger(__name__)
 class TributePaymentHandler:
     def __init__(self):
         self.api_key = TRIBUTE_API_KEY
-        self.donation_link = TRIBUTE_PRODUCT_ID
+        self.subscription_link = TRIBUTE_SUBSCRIPTION_URL
 
     async def create_payment_link(
         self, user_id: int, username: Optional[str] = None
     ) -> Optional[str]:
-        """Возвращает ссылку на страницу доната/продукта"""
+        """Возвращает ссылку на страницу подписки Tribute."""
         if not TRIBUTE_ENABLED:
             logger.warning("Tribute отключен")
             return None
-        if not self.donation_link:
-            logger.error("❌ TRIBUTE_PRODUCT_ID пустой, ссылка на оплату не задана")
+        if not self.subscription_link:
+            logger.error(
+                "❌ TRIBUTE_SUBSCRIPTION_URL пустой, ссылка на оплату не задана"
+            )
             return None
 
         try:
             logger.info(
-                f"✅ Tribute payment link for user {user_id}: {self.donation_link}"
+                f"✅ Tribute payment link for user {user_id}: {self.subscription_link}"
             )
-            return self.donation_link
+            return self.subscription_link
 
         except Exception as e:
             logger.error(

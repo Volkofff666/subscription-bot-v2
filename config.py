@@ -28,6 +28,9 @@ TRIBUTE_ENABLED: bool = os.getenv("TRIBUTE_ENABLED", "true").lower() == "true"
 TRIBUTE_API_KEY: str = os.getenv("TRIBUTE_API_KEY", "")
 TRIBUTE_WEBHOOK_SECRET: str = os.getenv("TRIBUTE_WEBHOOK_SECRET", "")
 TRIBUTE_PRODUCT_ID: str = os.getenv("TRIBUTE_PRODUCT_ID", "")
+TRIBUTE_SUBSCRIPTION_URL: str = os.getenv(
+    "TRIBUTE_SUBSCRIPTION_URL", "https://t.me/tribute/app?startapp=sOCo"
+)
 
 # ==================== SUBSCRIPTION ====================
 SUBSCRIPTION_PRICE: float = float(os.getenv("SUBSCRIPTION_PRICE", "19"))
@@ -92,8 +95,10 @@ def validate_config() -> bool:
 
     if TRIBUTE_ENABLED and not TRIBUTE_API_KEY:
         logger.warning("⚠️ TRIBUTE_API_KEY не установлен, платежи могут не работать")
-    if TRIBUTE_ENABLED and not TRIBUTE_PRODUCT_ID:
-        logger.warning("⚠️ TRIBUTE_PRODUCT_ID не установлен, ссылка оплаты будет пустой")
+    if TRIBUTE_ENABLED and not TRIBUTE_SUBSCRIPTION_URL:
+        logger.warning(
+            "⚠️ TRIBUTE_SUBSCRIPTION_URL не установлен, ссылка оплаты будет пустой"
+        )
 
     if not TRIBUTE_ENABLED:
         raise ValueError("Включите TRIBUTE_ENABLED=true для приема платежей")
