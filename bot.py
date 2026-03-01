@@ -44,6 +44,7 @@ from database import (
     mark_payment_attempt,
     save_cancellation_reason,
     save_user,
+    update_subscription_period,
 )
 from keyboards import (
     back_to_status_keyboard,
@@ -87,39 +88,57 @@ class CancelSubscriptionForm(StatesGroup):
 
 
 async def process_successful_payment(
-    user_id: int, amount: float, currency: str, session_id: str
+    user_id: int, amount: float, currency: str, session_id: str, status: str = "succeeded"
 ):
-    """Выдача подписки после успешной оплаты через Stripe"""
+    """Выдача или продление подписки после оплаты через Stripe"""
     try:
         logger.info(
-            f"🔄 Обработка платежа для user {user_id}, amount={amount}, session={session_id}"
+            f"🔄 Обработка платежа для user {user_id}, amount={amount}, session={session_id}, status={status}"
         )
 
-        invite = await bot.create_chat_invite_link(
-            chat_id=int(CHANNEL_ID),
-            member_limit=1,
-            expire_date=timedelta(days=1),
-            name=f"Sub_{user_id}",
-        )
-        invite_link = invite.invite_link
+        if status == "renewed":
+            # Auto-renewal: extend existing expiry, user is already in the channel
+            sub = await get_subscription(user_id)
+            if sub and sub["status"] == "active":
+                new_expires = sub["expires_at"] + timedelta(days=SUBSCRIPTION_DAYS)
+            else:
+                new_expires = datetime.now() + timedelta(days=SUBSCRIPTION_DAYS)
+            await update_subscription_period(user_id, new_expires)
+            await bot.send_message(
+                user_id,
+                f"✅ <b>Подписка продлена!</b>\n\n"
+                f"Доступ продлён ещё на <b>{SUBSCRIPTION_DAYS} дней</b>.\n"
+                f"Ваша подписка активна до <b>{new_expires.strftime('%d.%m.%Y')}</b>.",
+                parse_mode="HTML",
+            )
+            logger.info(f"🔄 Подписка продлена user {user_id} до {new_expires}")
+        else:
+            # First payment: create invite link and grant subscription
+            invite = await bot.create_chat_invite_link(
+                chat_id=int(CHANNEL_ID),
+                member_limit=1,
+                expire_date=timedelta(days=1),
+                name=f"Sub_{user_id}",
+            )
+            invite_link = invite.invite_link
 
-        await create_subscription(
-            user_id=user_id,
-            payment_provider="stripe",
-            invite_link=invite_link,
-            days=SUBSCRIPTION_DAYS,
-            stripe_subscription_id=session_id,
-        )
+            await create_subscription(
+                user_id=user_id,
+                payment_provider="stripe",
+                invite_link=invite_link,
+                days=SUBSCRIPTION_DAYS,
+                stripe_subscription_id=session_id,
+            )
 
-        await bot.send_message(
-            user_id,
-            f"✅ <b>Оплата прошла успешно!</b>\n\n"
-            f"Доступ открыт на <b>{SUBSCRIPTION_DAYS} дней</b>.\n"
-            f"Вот ваша ссылка:\n{invite_link}\n\n"
-            f"⚠️ <i>Ссылка одноразовая и действует 24 часа.</i>",
-            parse_mode="HTML",
-        )
-        logger.info(f"✅ Подписка выдана user {user_id}")
+            await bot.send_message(
+                user_id,
+                f"✅ <b>Оплата прошла успешно!</b>\n\n"
+                f"Доступ открыт на <b>{SUBSCRIPTION_DAYS} дней</b>.\n"
+                f"Вот ваша ссылка:\n{invite_link}\n\n"
+                f"⚠️ <i>Ссылка одноразовая и действует 24 часа.</i>",
+                parse_mode="HTML",
+            )
+            logger.info(f"✅ Подписка выдана user {user_id}")
 
     except Exception as e:
         logger.error(f"❌ Ошибка выдачи подписки user {user_id}: {e}", exc_info=True)
@@ -139,13 +158,14 @@ async def stripe_webhook_handler(request: web.Request):
 
         logger.info(f"🔍 Stripe webhook result: {result}")
 
-        if result and result["status"] == "succeeded":
+        if result and result["status"] in ("succeeded", "renewed"):
             asyncio.create_task(
                 process_successful_payment(
                     user_id=result["user_id"],
                     amount=result["amount"],
                     currency=result["currency"],
                     session_id=result["session_id"],
+                    status=result["status"],
                 )
             )
             return web.Response(text="OK")

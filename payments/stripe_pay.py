@@ -33,9 +33,10 @@ class StripePaymentHandler:
 
         try:
             session = stripe.checkout.Session.create(
-                mode="payment",
+                mode="subscription",
                 line_items=[{"price": STRIPE_PRICE_ID, "quantity": 1}],
                 metadata={"telegram_user_id": str(user_id)},
+                subscription_data={"metadata": {"telegram_user_id": str(user_id)}},
                 success_url=STRIPE_SUCCESS_URL,
                 cancel_url=STRIPE_CANCEL_URL,
             )
@@ -74,27 +75,54 @@ class StripePaymentHandler:
 
             logger.info(f"📨 Stripe event: {event['type']}")
 
-            if event["type"] != "checkout.session.completed":
-                return None
+            if event["type"] == "checkout.session.completed":
+                session = event["data"]["object"]
+                metadata = session.get("metadata", {})
+                user_id_str = metadata.get("telegram_user_id")
 
-            session = event["data"]["object"]
-            metadata = session.get("metadata", {})
-            user_id_str = metadata.get("telegram_user_id")
+                if not user_id_str:
+                    logger.error("❌ telegram_user_id отсутствует в metadata Stripe session")
+                    return None
 
-            if not user_id_str:
-                logger.error("❌ telegram_user_id отсутствует в metadata Stripe session")
-                return None
+                amount_total = session.get("amount_total", 0)
+                currency = session.get("currency", SUBSCRIPTION_CURRENCY).upper()
+                # For subscription mode, store the Stripe Subscription ID (sub_...)
+                stripe_sub_id = session.get("subscription") or session.get("id", "")
 
-            amount_total = session.get("amount_total", 0)
-            currency = session.get("currency", SUBSCRIPTION_CURRENCY).upper()
+                return {
+                    "user_id": int(user_id_str),
+                    "amount": amount_total / 100,
+                    "currency": currency,
+                    "session_id": stripe_sub_id,
+                    "status": "succeeded",
+                }
 
-            return {
-                "user_id": int(user_id_str),
-                "amount": amount_total / 100,
-                "currency": currency,
-                "session_id": session.get("id", ""),
-                "status": "succeeded",
-            }
+            if event["type"] == "invoice.payment_succeeded":
+                invoice = event["data"]["object"]
+                # Only handle recurring renewals, not the first invoice (covered by checkout.session.completed)
+                if invoice.get("billing_reason") != "subscription_cycle":
+                    return None
+
+                subscription_id = invoice.get("subscription")
+                if not subscription_id:
+                    return None
+
+                stripe_sub = stripe.Subscription.retrieve(subscription_id)
+                user_id_str = stripe_sub.metadata.get("telegram_user_id")
+
+                if not user_id_str:
+                    logger.error(f"❌ telegram_user_id отсутствует в metadata подписки {subscription_id}")
+                    return None
+
+                return {
+                    "user_id": int(user_id_str),
+                    "amount": invoice.get("amount_paid", 0) / 100,
+                    "currency": invoice.get("currency", SUBSCRIPTION_CURRENCY).upper(),
+                    "session_id": subscription_id,
+                    "status": "renewed",
+                }
+
+            return None
 
         except Exception as e:
             logger.error(f"❌ Ошибка парсинга Stripe webhook: {e}", exc_info=True)
