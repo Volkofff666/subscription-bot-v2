@@ -9,6 +9,7 @@ import ssl
 from datetime import datetime, timedelta
 
 from aiogram import Bot, Dispatcher, F
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -202,19 +203,25 @@ async def process_payment(callback: CallbackQuery):
     payment_url = await PaymentFactory.create_payment(user_id, username)
 
     if not payment_url:
-        await callback.message.edit_text(
-            format_message("payment_error"),
-            reply_markup=subscription_offer_keyboard(),
-            parse_mode="HTML",
-        )
+        try:
+            await callback.message.edit_text(
+                format_message("payment_error"),
+                reply_markup=subscription_offer_keyboard(),
+                parse_mode="HTML",
+            )
+        except TelegramBadRequest:
+            pass
         await callback.answer("❌ Ошибка создания платежа", show_alert=True)
         return
 
-    await callback.message.edit_text(
-        format_message("payment_invoice"),
-        reply_markup=payment_keyboard(payment_url),
-        parse_mode="HTML",
-    )
+    try:
+        await callback.message.edit_text(
+            format_message("payment_invoice"),
+            reply_markup=payment_keyboard(payment_url),
+            parse_mode="HTML",
+        )
+    except TelegramBadRequest:
+        pass
     await callback.answer("💳 Переходите к оплате!")
     logger.info(f"💳 Payment link for user {user_id}: {payment_url}")
 
