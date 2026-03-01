@@ -82,12 +82,15 @@ async def _send_expiry_warnings(bot: Bot) -> None:
                 logger.warning(f"Failed to create payment URL for {user_id}: {e}")
                 payment_url = None
 
-            keyboard = renewal_offer_keyboard(payment_url) if payment_url else None
+            text = format_message("subscription_expiring_soon", days_left=days_left)
+            if payment_url:
+                text += f'\n💳 <a href="{payment_url}">Продлить подписку</a>'
+            keyboard = renewal_offer_keyboard() if payment_url else None
 
             try:
                 await bot.send_message(
                     user_id,
-                    format_message("subscription_expiring_soon", days_left=days_left),
+                    text,
                     reply_markup=keyboard,
                     parse_mode="HTML",
                 )
@@ -124,12 +127,15 @@ async def _revoke_expired(bot: Bot) -> None:
             logger.warning(f"Failed to create payment URL for {user_id}: {e}")
             payment_url = None
 
-        keyboard = renewal_offer_keyboard(payment_url) if payment_url else subscription_offer_keyboard()
+        text = format_message("subscription_expired")
+        if payment_url:
+            text += f'\n💳 <a href="{payment_url}">Оформить подписку снова</a>'
+        keyboard = renewal_offer_keyboard() if payment_url else subscription_offer_keyboard()
 
         try:
             await bot.send_message(
                 user_id,
-                format_message("subscription_expired"),
+                text,
                 reply_markup=keyboard,
                 parse_mode="HTML",
             )

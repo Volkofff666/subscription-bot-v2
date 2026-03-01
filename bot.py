@@ -236,8 +236,8 @@ async def process_payment(callback: CallbackQuery):
 
     try:
         await callback.message.edit_text(
-            format_message("payment_invoice"),
-            reply_markup=payment_keyboard(payment_url),
+            format_message("payment_invoice", payment_url=payment_url),
+            reply_markup=payment_keyboard(),
             parse_mode="HTML",
         )
     except TelegramBadRequest:
