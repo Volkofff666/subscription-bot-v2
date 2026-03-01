@@ -28,8 +28,9 @@ def subscription_offer_keyboard() -> InlineKeyboardMarkup:
     ])
 
 
-def payment_keyboard() -> InlineKeyboardMarkup:
+def payment_keyboard(payment_url: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💳 Перейти к оплате", url=payment_url)],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main")]
     ])
 
@@ -62,7 +63,8 @@ def back_to_status_keyboard() -> InlineKeyboardMarkup:
     ])
 
 
-def renewal_offer_keyboard() -> InlineKeyboardMarkup:
+def renewal_offer_keyboard(payment_url: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ Отказаться от продления", callback_data="renewal_decline")]
+        [InlineKeyboardButton(text="💳 Продлить подписку", url=payment_url)],
+        [InlineKeyboardButton(text="❌ Отказаться", callback_data="renewal_decline")]
     ])

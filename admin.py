@@ -798,8 +798,8 @@ async def process_legacy_notify(message: Message, state: FSMContext, bot: Bot):
         try:
             await bot.send_message(
                 user_id,
-                format_message("renewal_offer_expired", payment_url=payment_url),
-                reply_markup=renewal_offer_keyboard(),
+                format_message("renewal_offer_expired"),
+                reply_markup=renewal_offer_keyboard(payment_url),
                 parse_mode="HTML",
             )
             sent += 1
@@ -1406,12 +1406,13 @@ async def test_stripe_link(callback: CallbackQuery):
     if STRIPE_SECRET_KEY.startswith("sk_test_"):
         mode_hint = "\n\n🃏 <b>Тестовая карта:</b> <code>4242 4242 4242 4242</code>, любые дата/CVV"
 
+    from keyboards import payment_keyboard
+
     await callback.message.answer(
         f"💳 <b>Тестовая Stripe-ссылка создана</b>\n\n"
         f"User ID в metadata: <code>{user_id}</code>\n"
-        f"После оплаты webhook должен выдать вам подписку.{mode_hint}\n\n"
-        f'💳 <a href="{payment_url}">Перейти к оплате</a>',
-        reply_markup=back_to_admin_keyboard(),
+        f"После оплаты webhook должен выдать вам подписку.{mode_hint}",
+        reply_markup=payment_keyboard(payment_url),
         parse_mode="HTML",
     )
     logger.info(f"Admin {user_id} created test Stripe link: {payment_url}")
