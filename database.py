@@ -251,25 +251,13 @@ async def get_user_stats() -> str:
 
 async def get_all_users() -> List[Dict]:
     async with get_db() as db:
-        async with db.execute("SELECT user_id, username FROM users") as cursor:
+        async with db.execute(
+            "SELECT user_id, username, first_name FROM users ORDER BY join_date DESC"
+        ) as cursor:
             return [
-                {"user_id": row[0], "username": row[1]}
+                {"user_id": row[0], "username": row[1] or "", "first_name": row[2] or ""}
                 for row in await cursor.fetchall()
             ]
-
-            async def get_all_users() -> List[Dict]:
-                async with get_db() as db:
-                    async with db.execute(
-                        "SELECT user_id, username, first_name FROM users"
-                    ) as cursor:
-                        return [
-                            {
-                                "user_id": row[0],
-                                "username": row[1],
-                                "first_name": row[2],
-                            }
-                            for row in await cursor.fetchall()
-                        ]
 
 
 async def get_expiring_subscriptions(days: int = 3) -> List[Dict]:

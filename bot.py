@@ -1,5 +1,5 @@
 """
-Главный файл Telegram бота с подписками + Tribute Webhook
+Главный файл Telegram бота с подписками + Stripe Webhook
 """
 
 import asyncio
@@ -57,7 +57,7 @@ from keyboards import (
 )
 from messages import format_message
 from payments import PaymentFactory
-from payments.tribute_pay import TributePaymentHandler
+from payments.stripe_pay import StripePaymentHandler
 from subscription_tasks import subscription_enforcer
 
 logging.basicConfig(
@@ -82,19 +82,18 @@ class CancelSubscriptionForm(StatesGroup):
     waiting_for_reason = State()
 
 
-# ==================== TRIBUTE WEBHOOK ====================
+# ==================== STRIPE WEBHOOK ====================
 
 
 async def process_successful_payment(
-    user_id: int, amount: float, currency: str, donation_id: str
+    user_id: int, amount: float, currency: str, session_id: str
 ):
-    """Выдача подписки после успешной оплаты"""
+    """Выдача подписки после успешной оплаты через Stripe"""
     try:
         logger.info(
-            f"🔄 Обработка платежа для user {user_id}, amount={amount}, id={donation_id}"
+            f"🔄 Обработка платежа для user {user_id}, amount={amount}, session={session_id}"
         )
 
-        # Создаем одноразовую ссылку
         invite = await bot.create_chat_invite_link(
             chat_id=int(CHANNEL_ID),
             member_limit=1,
@@ -103,16 +102,14 @@ async def process_successful_payment(
         )
         invite_link = invite.invite_link
 
-        # Сохраняем подписку
         await create_subscription(
             user_id=user_id,
-            payment_provider="tribute",
+            payment_provider="stripe",
             invite_link=invite_link,
             days=SUBSCRIPTION_DAYS,
-            stripe_subscription_id=f"tr_{donation_id}",
+            stripe_subscription_id=session_id,
         )
 
-        # Отправляем пользователю
         await bot.send_message(
             user_id,
             f"✅ <b>Оплата прошла успешно!</b>\n\n"
@@ -127,22 +124,19 @@ async def process_successful_payment(
         logger.error(f"❌ Ошибка выдачи подписки user {user_id}: {e}", exc_info=True)
 
 
-async def tribute_webhook_handler(request: web.Request):
-    """HTTP-обработчик для webhook от Tribute"""
+async def stripe_webhook_handler(request: web.Request):
+    """HTTP-обработчик для webhook от Stripe"""
     try:
         payload = await request.read()
-        data = await request.json()
+        signature = request.headers.get("stripe-signature", "")
 
-        logger.info(f"📥 Получен webhook от Tribute: {data}")
-
-        signature = request.headers.get("trbt-signature", "")
-        if not TributePaymentHandler.verify_webhook_signature(payload, signature):
-            logger.warning("⛔ Invalid webhook signature")
+        if not StripePaymentHandler.verify_webhook_signature(payload, signature):
+            logger.warning("⛔ Invalid Stripe webhook signature")
             return web.Response(status=403, text="Forbidden")
 
-        result = await TributePaymentHandler.parse_webhook(data)
+        result = StripePaymentHandler.parse_webhook(payload, signature)
 
-        logger.info(f"🔍 Распарсенный результат: {result}")
+        logger.info(f"🔍 Stripe webhook result: {result}")
 
         if result and result["status"] == "succeeded":
             asyncio.create_task(
@@ -150,14 +144,14 @@ async def tribute_webhook_handler(request: web.Request):
                     user_id=result["user_id"],
                     amount=result["amount"],
                     currency=result["currency"],
-                    donation_id=result["donation_id"],
+                    session_id=result["session_id"],
                 )
             )
             return web.Response(text="OK")
 
         return web.Response(text="Ignored")
     except Exception as e:
-        logger.error(f"❌ Webhook error: {e}", exc_info=True)
+        logger.error(f"❌ Stripe webhook error: {e}", exc_info=True)
         return web.Response(status=500, text="Error")
 
 
@@ -383,6 +377,19 @@ async def on_startup():
     await init_db()
     provider = PaymentFactory.get_provider_name()
     logger.info(f"💳 Платежный провайдер: {provider}")
+
+    # Проверяем доступ к каналу
+    try:
+        chat = await bot.get_chat(int(CHANNEL_ID))
+        logger.info(f"✅ Канал найден: {chat.title or chat.id} (id={CHANNEL_ID})")
+    except Exception as e:
+        logger.error(
+            f"❌ Не удалось получить доступ к каналу CHANNEL_ID={CHANNEL_ID}: {e}\n"
+            "   Проверьте:\n"
+            "   1. CHANNEL_ID в .env — для приватных каналов формат: -100XXXXXXXXXX\n"
+            "   2. Бот добавлен в канал как администратор с правом приглашать участников"
+        )
+
     logger.info("✅ Бот успешно запущен!")
 
     global subscription_task
@@ -412,7 +419,7 @@ async def main():
 
     # Webhook сервер
     app = web.Application()
-    app.router.add_post(WEBHOOK_PATH, tribute_webhook_handler)
+    app.router.add_post(WEBHOOK_PATH, stripe_webhook_handler)
 
     runner = web.AppRunner(app)
     await runner.setup()

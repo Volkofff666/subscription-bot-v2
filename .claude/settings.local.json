@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pylint --disable=all --enable=unused-import admin.py)"
+    ]
+  }
+}

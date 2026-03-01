@@ -11,7 +11,7 @@ class FakeBot:
         self.bans = []
         self.unbans = []
 
-    async def send_message(self, user_id, text):
+    async def send_message(self, user_id, text, **kwargs):
         self.messages.append((user_id, text))
 
     async def ban_chat_member(self, chat_id, user_id):
@@ -39,10 +39,12 @@ async def test_send_expiry_warnings_marks_notification(monkeypatch):
     async def fake_mark_notification(user_id, notification_type):
         marked.append((user_id, notification_type))
 
-    monkeypatch.setattr(
-        subscription_tasks, "get_expiring_subscriptions", fake_get_expiring_subscriptions
-    )
+    async def fake_create_payment(user_id, username=None):
+        return "https://checkout.stripe.com/pay/test"
+
+    monkeypatch.setattr(subscription_tasks, "get_expiring_subscriptions", fake_get_expiring_subscriptions)
     monkeypatch.setattr(subscription_tasks, "mark_notification", fake_mark_notification)
+    monkeypatch.setattr(subscription_tasks.PaymentFactory, "create_payment", fake_create_payment)
 
     await subscription_tasks._send_expiry_warnings(bot)
 
@@ -66,18 +68,22 @@ async def test_revoke_expired_bans_unbans_expires_and_notifies(monkeypatch):
     async def fake_expire_subscription(user_id):
         expired_called.append(user_id)
 
-    monkeypatch.setattr(
-        subscription_tasks, "get_expired_active_subscriptions", fake_get_expired_active_subscriptions
-    )
+    async def fake_create_payment(user_id, username=None):
+        return "https://checkout.stripe.com/pay/test"
+
+    monkeypatch.setattr(subscription_tasks, "get_expired_active_subscriptions", fake_get_expired_active_subscriptions)
     monkeypatch.setattr(subscription_tasks, "expire_subscription", fake_expire_subscription)
     monkeypatch.setattr(subscription_tasks, "CHANNEL_ID", "123456")
+    monkeypatch.setattr(subscription_tasks.PaymentFactory, "create_payment", fake_create_payment)
 
     await subscription_tasks._revoke_expired(bot)
 
     assert bot.bans == [(123456, 22)]
     assert bot.unbans == [(123456, 22)]
     assert expired_called == [22]
-    assert bot.messages == [(22, subscription_tasks.format_message("subscription_expired"))]
+    assert len(bot.messages) == 1
+    assert bot.messages[0][0] == 22
+    assert "истёк" in bot.messages[0][1]
 
 
 def test_seconds_until_next_check_before_hour(monkeypatch):

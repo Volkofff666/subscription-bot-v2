@@ -5,8 +5,6 @@
 import logging
 from typing import Optional
 
-from config import TRIBUTE_API_KEY, TRIBUTE_ENABLED
-
 logger = logging.getLogger(__name__)
 
 
@@ -18,7 +16,7 @@ class PaymentFactory:
         user_id: int, username: Optional[str] = None
     ) -> Optional[str]:
         """
-        Создает платеж и возвращает URL для оплаты
+        Создает платеж и возвращает URL для оплаты.
 
         Args:
             user_id: ID пользователя Telegram
@@ -27,19 +25,11 @@ class PaymentFactory:
         Returns:
             URL для оплаты или None в случае ошибки
         """
+        logger.info(f"💳 Using Stripe payment for user {user_id}")
+        from .stripe_pay import StripePaymentHandler
 
-        if TRIBUTE_ENABLED:
-            logger.info(f"💳 Using TRIBUTE payment for user {user_id}")
-            from .tribute_pay import TributePaymentHandler
-
-            return await TributePaymentHandler.create_payment(user_id, username)
-
-        logger.error("❌ No payment provider enabled!")
-        return None
+        return await StripePaymentHandler.create_payment(user_id, username)
 
     @staticmethod
     def get_provider_name() -> str:
-        """Возвращает название активного провайдера"""
-        if TRIBUTE_ENABLED:
-            return "Tribute"
-        return "None"
+        return "Stripe"

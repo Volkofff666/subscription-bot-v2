@@ -7,7 +7,7 @@ import database
 TEST_SUITES = {
     "test_database.py": "Database lifecycle and subscription state",
     "test_subscription_tasks.py": "Background subscription jobs",
-    "test_payments.py": "Tribute webhook and payment factory",
+    "test_payments.py": "Stripe webhook and payment factory",
     "test_admin_and_messages.py": "Admin helpers and message templates",
 }
 

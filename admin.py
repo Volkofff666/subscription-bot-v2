@@ -31,6 +31,7 @@ from database import (
 from keyboards import renewal_offer_keyboard
 from messages import format_message
 from payments import PaymentFactory
+from subscription_tasks import backup_database
 
 logger = logging.getLogger(__name__)
 admin_router = Router()
@@ -136,37 +137,15 @@ def admin_main_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats")],
-            [
-                InlineKeyboardButton(
-                    text="👥 Список пользователей", callback_data="admin_users_list"
-                )
-            ],
+            [InlineKeyboardButton(text="👥 Пользователи", callback_data="admin_users_list")],
+            [InlineKeyboardButton(text="🔍 Найти пользователя", callback_data="admin_search")],
+            [InlineKeyboardButton(text="💎 Выдать подписку", callback_data="admin_give_sub")],
             [InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast")],
-            [
-                InlineKeyboardButton(
-                    text="🔍 Найти пользователя", callback_data="admin_search"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="💎 Выдать подписку", callback_data="admin_give_sub"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="📋 Причины отмен", callback_data="admin_cancellations"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="📥 Экспорт данных", callback_data="admin_export"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🔔 Уведомить старую базу", callback_data="admin_legacy_notify"
-                )
-            ],
+            [InlineKeyboardButton(text="🔔 Уведомить старую базу", callback_data="admin_legacy_notify")],
+            [InlineKeyboardButton(text="📋 Причины отмен", callback_data="admin_cancellations")],
+            [InlineKeyboardButton(text="📥 Экспорт пользователей", callback_data="admin_export")],
+            [InlineKeyboardButton(text="💾 Бекап базы данных", callback_data="admin_backup")],
+            [InlineKeyboardButton(text="🧪 Диагностика и тест оплаты", callback_data="admin_diagnostics")],
         ]
     )
 
@@ -307,6 +286,37 @@ def _build_profile_text(
         f"<b>Отмен подписок:</b> {cancellations_count}\n\n"
         f"<b>Подписка:</b>\n{subscription_info}"
     )
+
+
+async def _create_invite_link(bot: Bot, label: str) -> str:
+    """
+    Создаёт одноразовую ссылку-приглашение в канал.
+    При ошибке бросает RuntimeError с понятным описанием.
+    """
+    from datetime import timedelta
+    try:
+        invite = await bot.create_chat_invite_link(
+            chat_id=int(CHANNEL_ID),
+            member_limit=1,
+            expire_date=timedelta(days=1),
+            name=label,
+        )
+        return invite.invite_link
+    except Exception as e:
+        err = str(e)
+        if "chat not found" in err.lower():
+            raise RuntimeError(
+                f"❌ Канал не найден (CHANNEL_ID={CHANNEL_ID}).\n\n"
+                "Проверьте:\n"
+                "• CHANNEL_ID в .env — для приватных каналов формат: <code>-100XXXXXXXXXX</code>\n"
+                "• Бот добавлен в канал как <b>администратор</b> с правом приглашать участников"
+            ) from e
+        if "not enough rights" in err.lower() or "forbidden" in err.lower():
+            raise RuntimeError(
+                "❌ Недостаточно прав.\n\n"
+                "Дайте боту права <b>администратора</b> в канале с разрешением «Приглашать пользователей»."
+            ) from e
+        raise RuntimeError(f"❌ Ошибка создания ссылки: {e}") from e
 
 
 def _parse_usernames(raw: str) -> List[str]:
@@ -983,17 +993,12 @@ async def give_manual_subscription(message: Message, state: FSMContext, bot: Bot
         days = int(message.text)
 
     try:
-        invite = await bot.create_chat_invite_link(
-            chat_id=int(CHANNEL_ID),
-            member_limit=1,
-            expire_date=timedelta(days=1),
-            name=f"Admin_{target_user_id}",
-        )
+        invite_link = await _create_invite_link(bot, f"Admin_{target_user_id}")
 
         await create_subscription(
             user_id=target_user_id,
             payment_provider="admin_manual",
-            invite_link=invite.invite_link,
+            invite_link=invite_link,
             days=days,
         )
 
@@ -1002,18 +1007,18 @@ async def give_manual_subscription(message: Message, state: FSMContext, bot: Bot
                 target_user_id,
                 f"🎁 <b>Вам выдана подписка!</b>\n\n"
                 f"⏰ Срок: {days} дней\n"
-                f"🔗 Ссылка на канал:\n{invite.invite_link}\n\n"
+                f"🔗 Ссылка на канал:\n{invite_link}\n\n"
                 f"⚠️ Ссылка действительна 24 часа",
                 parse_mode="HTML",
             )
-        except:
+        except Exception:
             pass
 
         await message.answer(
             f"✅ Подписка выдана!\n\n"
             f"👤 User ID: {target_user_id}\n"
             f"⏰ Дней: {days}\n"
-            f"🔗 Ссылка: {invite.invite_link}",
+            f"🔗 Ссылка: {invite_link}",
             reply_markup=back_to_admin_keyboard(),
         )
 
@@ -1021,10 +1026,13 @@ async def give_manual_subscription(message: Message, state: FSMContext, bot: Bot
             f"Admin {message.from_user.id} gave subscription to {target_user_id} for {days} days"
         )
 
+    except RuntimeError as e:
+        logger.error(f"Failed to give subscription: {e}")
+        await message.answer(str(e), reply_markup=back_to_admin_keyboard(), parse_mode="HTML")
     except Exception as e:
         logger.error(f"Failed to give subscription: {e}", exc_info=True)
         await message.answer(
-            "❌ Ошибка выдачи подписки", reply_markup=back_to_admin_keyboard()
+            f"❌ Ошибка выдачи подписки: {e}", reply_markup=back_to_admin_keyboard()
         )
 
     await state.clear()
@@ -1036,22 +1044,15 @@ async def give_subscription_from_profile(callback: CallbackQuery, bot: Bot):
     if callback.from_user.id not in ADMIN_IDS:
         return
 
-    from datetime import timedelta
-
     user_id = int(callback.data.split("_")[-1])
 
     try:
-        invite = await bot.create_chat_invite_link(
-            chat_id=int(CHANNEL_ID),
-            member_limit=1,
-            expire_date=timedelta(days=1),
-            name=f"Admin_{user_id}",
-        )
+        invite_link = await _create_invite_link(bot, f"Admin_{user_id}")
 
         await create_subscription(
             user_id=user_id,
             payment_provider="admin_manual",
-            invite_link=invite.invite_link,
+            invite_link=invite_link,
             days=SUBSCRIPTION_DAYS,
         )
 
@@ -1060,11 +1061,11 @@ async def give_subscription_from_profile(callback: CallbackQuery, bot: Bot):
                 user_id,
                 f"🎁 <b>Вам выдана подписка!</b>\n\n"
                 f"⏰ Срок: {SUBSCRIPTION_DAYS} дней\n"
-                f"🔗 Ссылка на канал:\n{invite.invite_link}\n\n"
+                f"🔗 Ссылка на канал:\n{invite_link}\n\n"
                 f"⚠️ Ссылка действительна 24 часа",
                 parse_mode="HTML",
             )
-        except:
+        except Exception:
             pass
 
         await callback.answer(
@@ -1076,9 +1077,13 @@ async def give_subscription_from_profile(callback: CallbackQuery, bot: Bot):
 
         logger.info(f"Admin {callback.from_user.id} gave subscription to {user_id}")
 
+    except RuntimeError as e:
+        logger.error(f"Failed to give subscription: {e}")
+        await callback.message.answer(str(e), parse_mode="HTML", reply_markup=back_to_admin_keyboard())
+        await callback.answer("❌ Ошибка", show_alert=False)
     except Exception as e:
         logger.error(f"Failed to give subscription: {e}", exc_info=True)
-        await callback.answer("❌ Ошибка выдачи подписки", show_alert=True)
+        await callback.answer(f"❌ Ошибка: {e}"[:200], show_alert=True)
 
 
 @admin_router.callback_query(F.data.startswith("revoke_sub_"))
@@ -1149,29 +1154,307 @@ async def show_cancellations(callback: CallbackQuery):
 
 @admin_router.callback_query(F.data == "admin_export")
 async def export_data(callback: CallbackQuery):
-    """Экспорт данных"""
+    """Экспорт всех пользователей с данными подписок в CSV"""
     if callback.from_user.id not in ADMIN_IDS:
         return
 
     try:
-        users = await get_all_users()
-
-        csv_data = "user_id,username\n"
-        for user in users:
-            csv_data += f"{user['user_id']},{user['username']}\n"
-
         from aiogram.types import BufferedInputFile
 
-        file = BufferedInputFile(
-            csv_data.encode("utf-8"),
-            filename=f"users_{datetime.now().strftime('%Y%m%d')}.csv",
-        )
+        async with get_db() as db:
+            async with db.execute("""
+                SELECT
+                    u.user_id,
+                    u.username,
+                    u.first_name,
+                    u.join_date,
+                    u.has_payment_attempt,
+                    COALESCE(s.status, 'none') AS sub_status,
+                    s.expires_at,
+                    s.payment_provider
+                FROM users u
+                LEFT JOIN subscriptions s ON u.user_id = s.user_id
+                ORDER BY u.join_date DESC
+            """) as cursor:
+                rows = await cursor.fetchall()
 
+        lines = ["user_id,username,first_name,join_date,has_payment_attempt,subscription_status,expires_at,payment_provider"]
+        for row in rows:
+            user_id, username, first_name, join_date, has_attempt, sub_status, expires_at, provider = row
+            lines.append(
+                f"{user_id},"
+                f"{_csv_escape(username)},"
+                f"{_csv_escape(first_name)},"
+                f"{join_date or ''},"
+                f"{'yes' if has_attempt else 'no'},"
+                f"{sub_status},"
+                f"{expires_at or ''},"
+                f"{provider or ''}"
+            )
+
+        csv_bytes = "\n".join(lines).encode("utf-8-sig")  # utf-8-sig для корректного открытия в Excel
+        filename = f"users_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
+
+        file = BufferedInputFile(csv_bytes, filename=filename)
         await callback.message.answer_document(
-            document=file, caption=f"📥 Экспорт пользователей\n\nВсего: {len(users)}"
+            document=file,
+            caption=(
+                f"📥 <b>Экспорт пользователей</b>\n\n"
+                f"👥 Всего записей: {len(rows)}\n"
+                f"📅 Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+            ),
+            parse_mode="HTML",
         )
         await callback.answer("✅ Файл отправлен")
 
     except Exception as e:
         logger.error(f"Export error: {e}", exc_info=True)
         await callback.answer("❌ Ошибка экспорта", show_alert=True)
+
+
+def _csv_escape(value: str) -> str:
+    """Экранирует значение для CSV (оборачивает в кавычки если нужно)."""
+    if not value:
+        return ""
+    value = str(value)
+    if "," in value or '"' in value or "\n" in value:
+        return '"' + value.replace('"', '""') + '"'
+    return value
+
+
+# ==================== БЕКАП ====================
+
+
+@admin_router.callback_query(F.data == "admin_backup")
+async def trigger_backup(callback: CallbackQuery):
+    """Создать бекап базы данных и отправить файл администратору"""
+    if callback.from_user.id not in ADMIN_IDS:
+        return
+
+    await callback.answer("⏳ Создаю бекап...")
+
+    try:
+        from aiogram.types import FSInputFile
+
+        backup_path = await backup_database()
+
+        if not backup_path:
+            await callback.message.answer(
+                "❌ Не удалось создать бекап. Проверьте логи.",
+                reply_markup=back_to_admin_keyboard(),
+            )
+            return
+
+        file = FSInputFile(str(backup_path), filename=backup_path.name)
+        await callback.message.answer_document(
+            document=file,
+            caption=(
+                f"💾 <b>Бекап базы данных</b>\n\n"
+                f"📁 Файл: <code>{backup_path.name}</code>\n"
+                f"📅 Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+            ),
+            parse_mode="HTML",
+        )
+        logger.info(f"Admin {callback.from_user.id} requested manual backup: {backup_path}")
+
+    except Exception as e:
+        logger.error(f"Backup error: {e}", exc_info=True)
+        await callback.message.answer(
+            "❌ Ошибка при создании бекапа",
+            reply_markup=back_to_admin_keyboard(),
+        )
+
+
+# ==================== ДИАГНОСТИКА И ТЕСТ ОПЛАТЫ ====================
+
+
+def _diagnostics_keyboard(channel_ok: bool) -> InlineKeyboardMarkup:
+    buttons = [
+        [InlineKeyboardButton(text="🔄 Обновить", callback_data="admin_diagnostics")],
+        [InlineKeyboardButton(text="💳 Создать тестовую ссылку Stripe", callback_data="admin_test_stripe_link")],
+    ]
+    if channel_ok:
+        buttons.append(
+            [InlineKeyboardButton(text="🎁 Симулировать выдачу подписки себе", callback_data="admin_test_give_sub")]
+        )
+    buttons.append(
+        [InlineKeyboardButton(text="🔙 Назад в админку", callback_data="admin_panel")]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+@admin_router.callback_query(F.data == "admin_diagnostics")
+async def show_diagnostics(callback: CallbackQuery, bot: Bot):
+    """Диагностика: Stripe, канал, webhook"""
+    if callback.from_user.id not in ADMIN_IDS:
+        return
+
+    await callback.answer("⏳ Проверяю...")
+
+    import stripe as stripe_lib
+    from config import STRIPE_PRICE_ID, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, WEBHOOK_PATH
+
+    lines = ["🔍 <b>ДИАГНОСТИКА СИСТЕМЫ</b>\n"]
+
+    # ── Stripe API key ──────────────────────────────────────
+    if not STRIPE_SECRET_KEY:
+        lines.append("❌ <b>Stripe API ключ:</b> не задан")
+    elif STRIPE_SECRET_KEY.startswith("sk_test_"):
+        lines.append("⚠️ <b>Stripe API ключ:</b> тестовый режим <code>sk_test_…</code>")
+    elif STRIPE_SECRET_KEY.startswith("sk_live_"):
+        lines.append("✅ <b>Stripe API ключ:</b> боевой режим <code>sk_live_…</code>")
+    else:
+        lines.append("⚠️ <b>Stripe API ключ:</b> задан, формат нестандартный")
+
+    # ── Price ID ─────────────────────────────────────────────
+    if not STRIPE_PRICE_ID:
+        lines.append("❌ <b>Price ID:</b> не задан (STRIPE_PRICE_ID)")
+    elif STRIPE_SECRET_KEY:
+        try:
+            price = stripe_lib.Price.retrieve(STRIPE_PRICE_ID)
+            amount = f"{price.unit_amount / 100:.2f}" if price.unit_amount else "?"
+            currency = (price.currency or "").upper()
+            lines.append(f"✅ <b>Price ID:</b> {amount} {currency} — найден в Stripe")
+        except stripe_lib.StripeError as e:
+            lines.append(f"❌ <b>Price ID:</b> ошибка Stripe — {getattr(e, 'user_message', None) or e}")
+        except Exception as e:
+            lines.append(f"❌ <b>Price ID:</b> {e}")
+    else:
+        lines.append(f"⚠️ <b>Price ID:</b> задан, но ключ API не проверен")
+
+    # ── Webhook Secret ────────────────────────────────────────
+    if not STRIPE_WEBHOOK_SECRET:
+        lines.append("⚠️ <b>Webhook Secret:</b> не задан — подпись не верифицируется!")
+    else:
+        lines.append("✅ <b>Webhook Secret:</b> задан")
+
+    # ── Webhook path ──────────────────────────────────────────
+    lines.append(f"🌐 <b>Webhook path:</b> <code>{WEBHOOK_PATH}</code>")
+    lines.append("   ↳ Настройте этот путь в Stripe Dashboard → Webhooks")
+    lines.append("   ↳ Событие: <code>checkout.session.completed</code>\n")
+
+    # ── Канал ─────────────────────────────────────────────────
+    channel_ok = False
+    invite_ok = False
+
+    try:
+        chat = await bot.get_chat(int(CHANNEL_ID))
+        lines.append(f"✅ <b>Канал:</b> {escape(chat.title or str(chat.id))}")
+        channel_ok = True
+    except Exception as e:
+        lines.append(f"❌ <b>Канал не найден:</b> {escape(str(e))}")
+        lines.append("   ↳ Проверьте CHANNEL_ID в .env (формат: <code>-100XXXXXXXXXX</code>)")
+
+    # ── Права на invite-ссылки ────────────────────────────────
+    if channel_ok:
+        try:
+            from datetime import timedelta
+            test_invite = await bot.create_chat_invite_link(
+                chat_id=int(CHANNEL_ID),
+                member_limit=1,
+                expire_date=timedelta(hours=1),
+                name="DiagCheck",
+            )
+            await bot.revoke_chat_invite_link(int(CHANNEL_ID), test_invite.invite_link)
+            lines.append("✅ <b>Invite-ссылки:</b> бот может создавать (права администратора OK)")
+            invite_ok = True
+        except Exception as e:
+            lines.append(f"❌ <b>Invite-ссылки:</b> {escape(str(e))}")
+            lines.append("   ↳ Дайте боту права администратора с разрешением «Приглашать участников»")
+
+    channel_ok = channel_ok and invite_ok
+
+    text = "\n".join(lines)
+    await callback.message.edit_text(
+        text,
+        reply_markup=_diagnostics_keyboard(channel_ok),
+        parse_mode="HTML",
+    )
+
+
+@admin_router.callback_query(F.data == "admin_test_stripe_link")
+async def test_stripe_link(callback: CallbackQuery):
+    """Создать реальную Stripe Checkout Session и отправить ссылку себе"""
+    if callback.from_user.id not in ADMIN_IDS:
+        return
+
+    await callback.answer("⏳ Создаю ссылку...")
+
+    user_id = callback.from_user.id
+    try:
+        payment_url = await PaymentFactory.create_payment(user_id)
+    except Exception as e:
+        await callback.message.answer(
+            f"❌ Ошибка при создании Stripe сессии:\n<code>{escape(str(e))}</code>\n\n"
+            "Проверьте <b>STRIPE_SECRET_KEY</b> и <b>STRIPE_PRICE_ID</b> в .env",
+            reply_markup=back_to_admin_keyboard(),
+            parse_mode="HTML",
+        )
+        return
+
+    if not payment_url:
+        await callback.message.answer(
+            "❌ Stripe вернул пустой URL.\n"
+            "Проверьте <b>STRIPE_SECRET_KEY</b> и <b>STRIPE_PRICE_ID</b> в .env",
+            reply_markup=back_to_admin_keyboard(),
+            parse_mode="HTML",
+        )
+        return
+
+    from keyboards import payment_keyboard
+
+    mode_hint = ""
+    from config import STRIPE_SECRET_KEY
+    if STRIPE_SECRET_KEY.startswith("sk_test_"):
+        mode_hint = "\n\n🃏 <b>Тестовая карта:</b> <code>4242 4242 4242 4242</code>, любые дата/CVV"
+
+    await callback.message.answer(
+        f"💳 <b>Тестовая Stripe-ссылка создана</b>\n\n"
+        f"User ID в metadata: <code>{user_id}</code>\n"
+        f"После оплаты webhook должен выдать вам подписку.{mode_hint}",
+        reply_markup=payment_keyboard(payment_url),
+        parse_mode="HTML",
+    )
+    logger.info(f"Admin {user_id} created test Stripe link: {payment_url}")
+
+
+@admin_router.callback_query(F.data == "admin_test_give_sub")
+async def test_give_subscription(callback: CallbackQuery, bot: Bot):
+    """Симулировать выдачу подписки администратору (без оплаты)"""
+    if callback.from_user.id not in ADMIN_IDS:
+        return
+
+    user_id = callback.from_user.id
+    await callback.answer("⏳ Симулирую выдачу...")
+
+    try:
+        invite_link = await _create_invite_link(bot, f"Test_{user_id}")
+
+        session_id = f"test_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        await create_subscription(
+            user_id=user_id,
+            payment_provider="test_simulation",
+            invite_link=invite_link,
+            days=1,
+            stripe_subscription_id=session_id,
+        )
+
+        await callback.message.answer(
+            f"✅ <b>Симуляция успешна!</b>\n\n"
+            f"Ссылка на канал:\n{invite_link}\n\n"
+            f"⚠️ Тестовая подписка на <b>1 день</b>\n"
+            f"ID: <code>{session_id}</code>",
+            reply_markup=back_to_admin_keyboard(),
+            parse_mode="HTML",
+        )
+        logger.info(f"Admin {user_id} simulated subscription delivery")
+
+    except RuntimeError as e:
+        await callback.message.answer(str(e), reply_markup=back_to_admin_keyboard(), parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Simulation error: {e}", exc_info=True)
+        await callback.message.answer(
+            f"❌ Ошибка симуляции:\n<code>{escape(str(e))}</code>",
+            reply_markup=back_to_admin_keyboard(),
+            parse_mode="HTML",
+        )

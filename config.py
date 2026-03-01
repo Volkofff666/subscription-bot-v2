@@ -21,16 +21,14 @@ ADMIN_IDS: List[int] = [
 ]
 WEBHOOK_HOST: str = os.getenv("WEBHOOK_HOST", "0.0.0.0")
 WEBHOOK_PORT: int = int(os.getenv("WEBHOOK_PORT", "9443"))
-WEBHOOK_PATH: str = os.getenv("WEBHOOK_PATH", "/webhook/tribute")
+WEBHOOK_PATH: str = os.getenv("WEBHOOK_PATH", "/webhook/stripe")
 
-# ==================== TRIBUTE ====================
-TRIBUTE_ENABLED: bool = os.getenv("TRIBUTE_ENABLED", "true").lower() == "true"
-TRIBUTE_API_KEY: str = os.getenv("TRIBUTE_API_KEY", "")
-TRIBUTE_WEBHOOK_SECRET: str = os.getenv("TRIBUTE_WEBHOOK_SECRET", "")
-TRIBUTE_PRODUCT_ID: str = os.getenv("TRIBUTE_PRODUCT_ID", "")
-TRIBUTE_SUBSCRIPTION_URL: str = os.getenv(
-    "TRIBUTE_SUBSCRIPTION_URL", "https://t.me/tribute/app?startapp=sOFz"
-)
+# ==================== STRIPE ====================
+STRIPE_SECRET_KEY: str = os.getenv("STRIPE_SECRET_KEY", "")
+STRIPE_WEBHOOK_SECRET: str = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+STRIPE_PRICE_ID: str = os.getenv("STRIPE_PRICE_ID", "")
+STRIPE_SUCCESS_URL: str = os.getenv("STRIPE_SUCCESS_URL", "https://t.me/")
+STRIPE_CANCEL_URL: str = os.getenv("STRIPE_CANCEL_URL", "https://t.me/")
 
 # ==================== SUBSCRIPTION ====================
 SUBSCRIPTION_PRICE: float = float(os.getenv("SUBSCRIPTION_PRICE", "19"))
@@ -63,7 +61,7 @@ MAX_CANCEL_REASON_LENGTH: int = 1000
 class PaymentProvider(Enum):
     """Доступные платежные провайдеры"""
 
-    TRIBUTE = "tribute"
+    STRIPE = "stripe"
     FAKE = "fake"
 
 
@@ -93,23 +91,20 @@ def validate_config() -> bool:
             "⚠️ ADMIN_IDS не установлены, команды администратора будут недоступны"
         )
 
-    if TRIBUTE_ENABLED and not TRIBUTE_API_KEY:
-        logger.warning("⚠️ TRIBUTE_API_KEY не установлен, платежи могут не работать")
-    if TRIBUTE_ENABLED and not TRIBUTE_SUBSCRIPTION_URL:
-        logger.warning(
-            "⚠️ TRIBUTE_SUBSCRIPTION_URL не установлен, ссылка оплаты будет пустой"
-        )
-
-    if not TRIBUTE_ENABLED:
-        raise ValueError("Включите TRIBUTE_ENABLED=true для приема платежей")
+    if not STRIPE_SECRET_KEY:
+        logger.warning("⚠️ STRIPE_SECRET_KEY не установлен, платежи не будут работать")
+    if not STRIPE_PRICE_ID:
+        logger.warning("⚠️ STRIPE_PRICE_ID не установлен, платежи не будут работать")
+    if not STRIPE_WEBHOOK_SECRET:
+        logger.warning("⚠️ STRIPE_WEBHOOK_SECRET не установлен, подпись webhook не проверяется")
 
     if SUBSCRIPTION_CHECK_HOUR < 0 or SUBSCRIPTION_CHECK_HOUR > 23:
         raise ValueError("SUBSCRIPTION_CHECK_HOUR должен быть в диапазоне 0-23")
     if SUBSCRIPTION_CHECK_TZ_OFFSET < -23 or SUBSCRIPTION_CHECK_TZ_OFFSET > 23:
         raise ValueError("SUBSCRIPTION_CHECK_TZ_OFFSET должен быть в диапазоне -23..23")
 
-    logger.info(f"✅ Конфигурация загружена:")
-    logger.info(f"   - Tribute: {'✅' if TRIBUTE_ENABLED else '❌'}")
+    logger.info("✅ Конфигурация загружена:")
+    logger.info(f"   - Stripe: {'✅' if STRIPE_SECRET_KEY else '❌'}")
     logger.info(f"   - Админов: {len(ADMIN_IDS)}")
     logger.info(f"   - Webhook: {WEBHOOK_HOST}:{WEBHOOK_PORT}{WEBHOOK_PATH}")
 

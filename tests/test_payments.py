@@ -1,81 +1,79 @@
+import json
+
 import pytest
 
+import payments.stripe_pay as stripe_module
 from payments.factory import PaymentFactory
-from payments.tribute_pay import TributePaymentHandler
+from payments.stripe_pay import StripePaymentHandler
 
 
-@pytest.mark.asyncio
-async def test_parse_webhook_new_donation_payload_format():
-    data = {
-        "name": "new_donation",
-        "payload": {
-            "telegram_user_id": 101,
-            "amount": 19,
-            "currency": "USD",
-            "donation_request_id": "don_1",
-            "message": "Thanks",
+def _make_payload(event_type: str, session_obj: dict) -> bytes:
+    return json.dumps({"type": event_type, "data": {"object": session_obj}}).encode()
+
+
+@pytest.fixture(autouse=True)
+def disable_stripe_signature(monkeypatch):
+    """Отключаем проверку подписи webhook для всех тестов."""
+    monkeypatch.setattr(stripe_module, "STRIPE_WEBHOOK_SECRET", "")
+
+
+def test_parse_stripe_webhook_checkout_completed():
+    payload = _make_payload(
+        "checkout.session.completed",
+        {
+            "id": "cs_test_abc123",
+            "amount_total": 1900,
+            "currency": "usd",
+            "metadata": {"telegram_user_id": "42"},
         },
-    }
-    result = await TributePaymentHandler.parse_webhook(data)
-    assert result == {
-        "user_id": 101,
-        "amount": 19,
-        "currency": "USD",
-        "donation_id": "don_1",
-        "message": "Thanks",
-        "status": "succeeded",
-    }
-
-
-@pytest.mark.asyncio
-async def test_parse_webhook_new_digital_product_data_format():
-    data = {
-        "name": "new_digital_product",
-        "data": {
-            "tg_user_id": 202,
-            "amount": 25,
-            "currency": "EUR",
-            "product_id": "prod_77",
-            "order_id": "order_9",
-        },
-    }
-    result = await TributePaymentHandler.parse_webhook(data)
-    assert result == {
-        "user_id": 202,
-        "amount": 25,
-        "currency": "EUR",
-        "donation_id": "prod_order_9",
-        "message": "Product: prod_77",
-        "status": "succeeded",
-    }
-
-
-@pytest.mark.asyncio
-async def test_parse_webhook_unknown_event_returns_none():
-    result = await TributePaymentHandler.parse_webhook({"name": "unknown_event"})
-    assert result is None
-
-
-@pytest.mark.asyncio
-async def test_payment_factory_tribute_disabled_returns_none(monkeypatch):
-    monkeypatch.setattr("payments.factory.TRIBUTE_ENABLED", False)
-    result = await PaymentFactory.create_payment(123)
-    assert result is None
-
-
-@pytest.mark.asyncio
-async def test_payment_factory_tribute_enabled_returns_link(monkeypatch):
-    monkeypatch.setattr("payments.factory.TRIBUTE_ENABLED", True)
-
-    async def fake_create_payment(user_id, username=None):
-        assert user_id == 123
-        assert username == "alice"
-        return "https://t.me/tribute/app?startapp=test"
-
-    monkeypatch.setattr(
-        "payments.tribute_pay.TributePaymentHandler.create_payment",
-        fake_create_payment,
     )
+    result = StripePaymentHandler.parse_webhook(payload, "")
+
+    assert result is not None
+    assert result["user_id"] == 42
+    assert result["amount"] == 19.0
+    assert result["currency"] == "USD"
+    assert result["session_id"] == "cs_test_abc123"
+    assert result["status"] == "succeeded"
+
+
+def test_parse_stripe_webhook_unknown_event_returns_none():
+    payload = _make_payload("payment_intent.created", {"id": "pi_test"})
+    result = StripePaymentHandler.parse_webhook(payload, "")
+    assert result is None
+
+
+def test_parse_stripe_webhook_missing_user_id_returns_none():
+    payload = _make_payload(
+        "checkout.session.completed",
+        {
+            "id": "cs_test_xyz",
+            "amount_total": 1900,
+            "currency": "usd",
+            "metadata": {},  # нет telegram_user_id
+        },
+    )
+    result = StripePaymentHandler.parse_webhook(payload, "")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_payment_factory_returns_stripe_url(monkeypatch):
+    async def fake_create(user_id, username=None):
+        return "https://checkout.stripe.com/pay/cs_test_abc"
+
+    monkeypatch.setattr(StripePaymentHandler, "create_payment", fake_create)
 
     result = await PaymentFactory.create_payment(123, "alice")
-    assert result == "https://t.me/tribute/app?startapp=test"
+    assert result == "https://checkout.stripe.com/pay/cs_test_abc"
+
+
+@pytest.mark.asyncio
+async def test_payment_factory_on_stripe_error_returns_none(monkeypatch):
+    async def failing_create(user_id, username=None):
+        return None
+
+    monkeypatch.setattr(StripePaymentHandler, "create_payment", failing_create)
+
+    result = await PaymentFactory.create_payment(999)
+    assert result is None

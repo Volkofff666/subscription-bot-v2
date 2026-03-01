@@ -11,7 +11,7 @@ async def test_user_lifecycle_and_payment_attempt():
     await database.save_user(1001, "alice", "Alice")
 
     users = await database.get_all_users()
-    assert users == [{"user_id": 1001, "username": "alice"}]
+    assert users == [{"user_id": 1001, "username": "alice", "first_name": "Alice"}]
 
     assert await database.has_payment_attempt(1001) is False
     await database.mark_payment_attempt(1001)
